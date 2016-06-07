@@ -231,7 +231,7 @@ public class ImagePickerSheetController: UIViewController {
             options.predicate = NSPredicate(format: "mediaType = %d OR mediaType = %d", PHAssetMediaType.Image.rawValue, PHAssetMediaType.Video.rawValue)
         }
         
-        let fetchLimit = 50
+        let fetchLimit = 15
         if #available(iOS 9, *) {
             options.fetchLimit = fetchLimit
         }
@@ -260,7 +260,7 @@ public class ImagePickerSheetController: UIViewController {
     
     private func requestImageForAsset(asset: PHAsset, completion: (image: UIImage?) -> ()) {
         let targetSize = sizeForAsset(asset, scale: UIScreen.mainScreen().scale)
-        requestOptions.synchronous = true
+        requestOptions.synchronous = false
         
         // Workaround because PHImageManager.requestImageForAsset doesn't work for burst images
         if asset.representsBurst {
