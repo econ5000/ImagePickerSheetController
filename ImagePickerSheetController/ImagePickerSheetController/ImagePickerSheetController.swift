@@ -231,6 +231,7 @@ public class ImagePickerSheetController: UIViewController {
             options.predicate = NSPredicate(format: "mediaType = %d OR mediaType = %d", PHAssetMediaType.Image.rawValue, PHAssetMediaType.Video.rawValue)
         }
         
+        
         let fetchLimit = 15
         if #available(iOS 9, *) {
             options.fetchLimit = fetchLimit
