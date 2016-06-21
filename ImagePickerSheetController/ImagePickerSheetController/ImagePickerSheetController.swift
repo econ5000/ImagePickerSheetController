@@ -84,7 +84,7 @@ public class ImagePickerSheetController: UIViewController {
     /// The media type of the displayed assets
     public let mediaType: ImagePickerMediaType
     
-    private var assets = [PHAsset]()
+    public var assets = [PHAsset]()
     
     private lazy var requestOptions: PHImageRequestOptions = {
         let options = PHImageRequestOptions()
@@ -118,7 +118,7 @@ public class ImagePickerSheetController: UIViewController {
         super.init(nibName: nil, bundle: nil)
         initialize()
     }
-
+    
     public required init?(coder aDecoder: NSCoder) {
         self.mediaType = .ImageAndVideo
         super.init(coder: aDecoder)
@@ -162,7 +162,11 @@ public class ImagePickerSheetController: UIViewController {
             PHPhotoLibrary.requestAuthorization() { status in
                 if status == .Authorized {
                     dispatch_async(dispatch_get_main_queue()) {
+                        
+                        
                         self.prepareAssets()
+                        
+                        
                         self.previewCollectionView.reloadData()
                         self.sheetCollectionView.reloadData()
                         self.view.setNeedsLayout()
@@ -197,7 +201,7 @@ public class ImagePickerSheetController: UIViewController {
     
     private func sizeForAsset(asset: PHAsset, scale: CGFloat = 1) -> CGSize {
         let proportion = CGFloat(asset.pixelWidth)/CGFloat(asset.pixelHeight)
-    
+        
         let imageHeight = maximumPreviewHeight - 2 * previewCollectionViewInset
         let imageWidth = floor(proportion * imageHeight)
         
@@ -205,7 +209,10 @@ public class ImagePickerSheetController: UIViewController {
     }
     
     private func prepareAssets() {
-        fetchAssets()
+        
+        if assets.count == 0 {
+            fetchAssetsHere()
+        }
         reloadMaximumPreviewHeight()
         reloadCurrentPreviewHeight(invalidateLayout: false)
         
@@ -218,7 +225,7 @@ public class ImagePickerSheetController: UIViewController {
         }
     }
     
-    private func fetchAssets() {
+    private func fetchAssetsHere() {
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         
@@ -258,6 +265,51 @@ public class ImagePickerSheetController: UIViewController {
             }
         }
     }
+    
+    public func fetchAssets() -> [PHAsset] {
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        
+        switch mediaType {
+        case .Image:
+            options.predicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.Image.rawValue)
+        case .Video:
+            options.predicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.Video.rawValue)
+        case .ImageAndVideo:
+            options.predicate = NSPredicate(format: "mediaType = %d OR mediaType = %d", PHAssetMediaType.Image.rawValue, PHAssetMediaType.Video.rawValue)
+        }
+        
+        
+        let fetchLimit = 15
+        if #available(iOS 9, *) {
+            options.fetchLimit = fetchLimit
+        }
+        
+        let result = PHAsset.fetchAssetsWithOptions(options)
+        let requestOptions = PHImageRequestOptions()
+        requestOptions.synchronous = true
+        requestOptions.deliveryMode = .FastFormat
+        
+        result.enumerateObjectsUsingBlock { asset, _, stop in
+            defer {
+                if self.assets.count > fetchLimit {
+                    stop.initialize(true)
+                }
+            }
+            
+            if let asset = asset as? PHAsset {
+                self.imageManager.requestImageDataForAsset(asset, options: requestOptions) { data, _, _, info in
+                    if data != nil {
+                        self.assets.append(asset)
+                    }
+                }
+            }
+        }
+        
+        return self.assets
+    }
+    
+    
     
     private func requestImageForAsset(asset: PHAsset, completion: (image: UIImage?) -> ()) {
         let targetSize = sizeForAsset(asset, scale: UIScreen.mainScreen().scale)
@@ -316,13 +368,13 @@ public class ImagePickerSheetController: UIViewController {
     private func reloadMaximumPreviewHeight() {
         let maxHeight: CGFloat = 400
         let maxImageWidth = sheetController.preferredSheetWidth - 2 * previewCollectionViewInset
-
+        
         let assetRatios = assets.map { CGSize(width: max($0.pixelHeight, $0.pixelWidth), height: min($0.pixelHeight, $0.pixelWidth)) }
-                                .map { $0.height / $0.width }
-            
+            .map { $0.height / $0.width }
+        
         let assetHeights = assetRatios.map { $0 * maxImageWidth }
-                                      .filter { $0 < maxImageWidth && $0 < maxHeight } // Make sure the preview isn't too high eg for squares
-                                      .sort(>)
+            .filter { $0 < maxImageWidth && $0 < maxHeight } // Make sure the preview isn't too high eg for squares
+            .sort(>)
         let assetHeight = ceil(assetHeights.first ?? 0)
         
         // Just a sanity check, to make sure this doesn't exceed 400 points
@@ -351,7 +403,7 @@ public class ImagePickerSheetController: UIViewController {
         UIView.animateWithDuration(animationDuration, animations: {
             self.sheetCollectionView.reloadSections(NSIndexSet(index: 0))
             self.view.layoutIfNeeded()
-        }, completion: completion)
+            }, completion: completion)
     }
     
 }
@@ -373,7 +425,7 @@ extension ImagePickerSheetController: UICollectionViewDataSource {
         
         let asset = assets[indexPath.section]
         cell.videoIndicatorView.hidden = asset.mediaType != .Video
-
+        
         requestImageForAsset(asset) { image in
             cell.imageView.image = image
         }
@@ -405,8 +457,8 @@ extension ImagePickerSheetController: UICollectionViewDelegate {
         if let maximumSelection = maximumSelection {
             if selectedImageIndices.count >= maximumSelection,
                 let previousItemIndex = selectedImageIndices.first {
-                    supplementaryViews[previousItemIndex]?.selected = false
-                    selectedImageIndices.removeAtIndex(0)
+                supplementaryViews[previousItemIndex]?.selected = false
+                selectedImageIndices.removeAtIndex(0)
             }
         }
         
@@ -461,7 +513,7 @@ extension ImagePickerSheetController: UICollectionViewDelegateFlowLayout {
         
         return CGSize(width: size.width * scale, height: currentImagePreviewHeight)
     }
-
+    
     public func collectionView(collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, referenceSizeForHeaderInSection section: Int) -> CGSize {
         let checkmarkWidth = PreviewSupplementaryView.checkmarkImage?.size.width ?? 0
         return CGSizeMake(checkmarkWidth + 2 * previewCheckmarkInset, sheetController.previewHeight - 2 * previewCollectionViewInset)
